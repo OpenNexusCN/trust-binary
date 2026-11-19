@@ -46,6 +46,13 @@ BIN="$PREFIX/nginx"
 install -m 0755 "$BIN_SRC" "$BIN" || fail "复制二进制失败: $BIN_SRC"
 echo "测试对象: $BIN_SRC"
 
+# 与安装说明一致：创建编译时指定的 nginx 用户/组。
+# 注意不能用 `user nobody;`：Ubuntu 的组名是 nogroup，EL 才是 nobody。
+getent group nginx >/dev/null 2>&1 || groupadd -r nginx 2>/dev/null || true
+id -u nginx >/dev/null 2>&1 || useradd -r -g nginx -s /sbin/nologin -M nginx 2>/dev/null || true
+id -u nginx >/dev/null 2>&1 || fail "创建 nginx 用户失败"
+mkdir -p /var/log/nginx /var/cache/nginx /var/run
+
 mkdir -p "$PREFIX/logs" "$PREFIX/html"
 mkdir -p "$PREFIX/temp/client_temp" "$PREFIX/temp/proxy_temp" \
          "$PREFIX/temp/fastcgi_temp" "$PREFIX/temp/uwsgi_temp" "$PREFIX/temp/scgi_temp"
@@ -79,7 +86,7 @@ echo "ldd 检查通过（仅依赖 glibc 家族）"
 
 echo "=== 3. 生成配置并 nginx -t ==="
 cat > "$CONF" <<EOF_CONF
-user nobody;
+user nginx nginx;
 worker_processes 1;
 pid $PREFIX/nginx.pid;
 error_log $PREFIX/logs/error.log info;
