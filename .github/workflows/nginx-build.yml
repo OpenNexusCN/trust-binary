@@ -365,10 +365,11 @@ jobs:
           shopt -s nullglob
           for dir in artifacts/nginx-*/; do
             for f in "$dir"*; do
-              if [ "$(basename "$f")" = "SHA256SUMS" ]; then
-                continue
-              fi
-              cp "$f" release/
+              [ -f "$f" ] || continue
+              case "$(basename "$f")" in
+                *.build-info.json|*.tar.gz|nginx-*-x86_64|nginx-*-aarch64) cp "$f" release/ ;;
+                *) echo "跳过: $f" ;;
+              esac
             done
           done
           cp artifacts/sources/source-metadata.json release/
