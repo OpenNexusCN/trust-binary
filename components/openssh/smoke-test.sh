@@ -177,6 +177,11 @@ REMOTE="$(retry_ssh "$SSH" "${SSH_OPTS[@]}" -i "$PREFIX/client_ed25519" root@127
 
 echo "=== 8. ssh-agent / ssh-add 测试 ==="
 eval "$("$SSH_AGENT" -s -a "$PREFIX/agent.sock")" >/dev/null
+for _ in $(seq 1 50); do
+    [ -S "$PREFIX/agent.sock" ] && break
+    sleep 0.1
+done
+[ -S "$PREFIX/agent.sock" ] || fail "ssh-agent 未创建 socket"
 "$SSH_ADD" -q "$PREFIX/client_ed25519" >/dev/null 2>&1 || fail "ssh-add 失败"
 SSH_ADD_LIST="$("$SSH_ADD" -l)" || fail "ssh-add -l 失败"
 grep -q 'ED25519' <<< "$SSH_ADD_LIST" || fail "ssh-add 未列出密钥"
