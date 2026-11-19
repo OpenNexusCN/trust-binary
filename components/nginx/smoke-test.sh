@@ -124,7 +124,11 @@ stream {
 }
 EOF_CONF
 
-"$BIN" -t -p "$PREFIX" -c "$CONF" || fail "nginx -t 失败"
+TEST_OUT="$("$BIN" -t -p "$PREFIX" -c "$CONF" 2>&1)" || {
+    printf '%s\n' "$TEST_OUT"
+    fail "nginx -t 失败"
+}
+printf '%s\n' "$TEST_OUT"
 
 echo "=== 4. 启动并做端到端请求 ==="
 "$BIN" -p "$PREFIX" -c "$CONF" || fail "nginx 启动失败"

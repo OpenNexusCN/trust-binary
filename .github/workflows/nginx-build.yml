@@ -339,7 +339,7 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" -ne 0 ]; then
-            summary="$(grep -E 'FAIL:|ERROR|not found|error while loading' smoke-test.log | tail -n 3 | tr '\n' ' ' | cut -c1-900 || true)"
+            summary="$(grep -E 'FAIL:|\[emerg\]|\[alert\]|nginx:|ERROR|not found|error while loading' smoke-test.log | tail -n 5 | tr '\n' ' ' | cut -c1-1200 || true)"
             [ -n "$summary" ] || summary="$(tail -n 3 smoke-test.log | tr '\n' ' ' | cut -c1-900 || true)"
             echo "::error title=冒烟测试失败 (${{ matrix.distro }}-${{ matrix.arch }})::$summary"
             exit "$rc"
