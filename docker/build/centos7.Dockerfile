@@ -29,7 +29,8 @@ RUN set -eux; \
         'gpgkey=file:///opt/trust-binary/RPM-GPG-KEY-CentOS-SIG-SCLo' \
         'enabled=1' \
         > /etc/yum.repos.d/CentOS-SCLo-rh.repo; \
-    yum -y install gcc gcc-c++ make perl; \
+    # perl-core 提供 IPC::Cmd 等被 RHEL 拆分的核心模块，OpenSSL Configure 需要
+    yum -y install gcc gcc-c++ make perl perl-core; \
     yum -y install devtoolset-11-gcc devtoolset-11-gcc-c++; \
     test -x /opt/rh/devtoolset-11/root/usr/bin/gcc; \
     yum clean all; \
