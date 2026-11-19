@@ -1,0 +1,396 @@
+name: nginx-build
+
+# 每日自动检查 nginx 最新稳定版并构建；也可手动指定版本触发。
+# 架构：x86_64（全部发行版）+ aarch64（Ubuntu 18.04 / 20.04 / 22.04 / 24.04）。
+# ARM64 使用 GitHub 原生 ARM runner；若仓库套餐不支持，可通过仓库变量 ARM64_RUNNER
+# 指定自托管 ARM runner 的标签。
+on:
+  workflow_dispatch:
+    inputs:
+      nginx_version:
+        description: "nginx 版本 X.Y.Z（留空 = 自动解析最新稳定版）"
+        required: false
+        type: string
+      force:
+        description: "即使 Release 已存在也强制重建"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write      # 创建 Release、回写 lockfile
+  id-token: write      # 构建来源证明（可选）
+  attestations: write
+
+concurrency:
+  group: nginx-build
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: 解析版本并校验源码
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      nginx_version: ${{ steps.resolve.outputs.version }}
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析 nginx 最新稳定版
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.nginx_version }}
+        run: |
+          set -euo pipefail
+          version="$(bash scripts/resolve-nginx-version.sh "$INPUT_VERSION")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "nginx 目标版本: $version"
+
+      - name: 检查 Release 是否已存在
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          if [ "${FORCE:-false}" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh release view "nginx-$VERSION" >/dev/null 2>&1; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "### nginx $VERSION 已发布，跳过构建" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "### 准备构建 nginx $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 下载并校验源码（GPG 验签 + SHA256 锁定）
+        if: steps.check.outputs.should_build == 'true'
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          bash scripts/prepare-sources.sh "$GITHUB_WORKSPACE/work" \
+            "$GITHUB_WORKSPACE/lock/nginx.lock.json" "$VERSION"
+          cat work/source-metadata.json
+
+      - name: 上传已验签源码
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sources
+          path: |
+            work/sources/
+            work/nginx.lock.resolved.json
+            work/source-metadata.json
+          retention-days: 7
+          if-no-files-found: error
+
+  build:
+    name: 构建 (${{ matrix.distro }}-${{ matrix.arch }})
+    needs: resolve
+    if: needs.resolve.outputs.should_build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---------- x86_64 ----------
+          - distro: ubuntu18.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:18.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: ubuntu20.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:20.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: ubuntu22.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:22.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: ubuntu24.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:24.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: centos7
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: centos:7
+            dockerfile: docker/build/centos7.Dockerfile
+          - distro: rocky9
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: rockylinux:9
+            dockerfile: docker/build/rocky9.Dockerfile
+          # ---------- aarch64（Ubuntu 18.04 - 24.04） ----------
+          - distro: ubuntu18.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:18.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: ubuntu20.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:20.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: ubuntu22.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:22.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+          - distro: ubuntu24.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:24.04
+            dockerfile: docker/build/ubuntu.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sources
+          path: work
+
+      - name: 拉取基础镜像（带镜像站回退）
+        run: |
+          set -euo pipefail
+          image="${{ matrix.base_image }}"
+          if ! docker pull "$image"; then
+            mirror_image="mirror.gcr.io/library/${image#docker.io/library/}"
+            echo "Docker Hub 拉取失败，回退到 $mirror_image"
+            docker pull "$mirror_image"
+            docker tag "$mirror_image" "$image"
+          fi
+
+      - name: 构建工具链镜像
+        run: |
+          set -euo pipefail
+          docker build \
+            -f "${{ matrix.dockerfile }}" \
+            --build-arg BASE_IMAGE="${{ matrix.base_image }}" \
+            -t "trust-binary/nginx-build:${{ matrix.distro }}" \
+            .
+
+      - name: 编译 nginx
+        env:
+          VERSION: ${{ needs.resolve.outputs.nginx_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          openssl_ver="$(python3 scripts/lockfile.py get work/nginx.lock.resolved.json openssl version)"
+          pcre2_ver="$(python3 scripts/lockfile.py get work/nginx.lock.resolved.json pcre2 version)"
+          zlib_ver="$(python3 scripts/lockfile.py get work/nginx.lock.resolved.json zlib version)"
+          docker run --rm --network none \
+            -v "$PWD/work/sources:/sources:ro" \
+            -v "$PWD/dist:/out" \
+            -e NGINX_VERSION="$VERSION" \
+            -e OPENSSL_VERSION="$openssl_ver" \
+            -e PCRE2_VERSION="$pcre2_ver" \
+            -e ZLIB_VERSION="$zlib_ver" \
+            -e DISTRO="${{ matrix.distro }}" \
+            -e EXPECTED_ARCH="${{ matrix.arch }}" \
+            "trust-binary/nginx-build:${{ matrix.distro }}" \
+            bash /opt/trust-binary/build.sh
+          ls -l dist
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-${{ needs.resolve.outputs.nginx_version }}-${{ matrix.distro }}-${{ matrix.arch }}
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: 生成构建来源证明（可选，需仓库变量 ENABLE_ATTESTATION=true）
+        if: vars.ENABLE_ATTESTATION == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
+
+  test:
+    name: 冒烟测试 (${{ matrix.distro }}-${{ matrix.arch }})
+    needs: [resolve, build]
+    if: needs.resolve.outputs.should_build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu18.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:18.04
+          - distro: ubuntu20.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:20.04
+          - distro: ubuntu22.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:22.04
+          - distro: ubuntu24.04
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: ubuntu:24.04
+          - distro: centos7
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: centos:7
+          - distro: rocky9
+            arch: x86_64
+            runner: ubuntu-latest
+            base_image: rockylinux:9
+          - distro: ubuntu18.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:18.04
+          - distro: ubuntu20.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:20.04
+          - distro: ubuntu22.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:22.04
+          - distro: ubuntu24.04
+            arch: aarch64
+            runner: ${{ vars.ARM64_RUNNER || 'ubuntu-24.04-arm' }}
+            base_image: ubuntu:24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nginx-${{ needs.resolve.outputs.nginx_version }}-${{ matrix.distro }}-${{ matrix.arch }}
+          path: artifact
+
+      - name: 拉取运行时镜像（带镜像站回退）
+        run: |
+          set -euo pipefail
+          image="${{ matrix.base_image }}"
+          if ! docker pull "$image"; then
+            mirror_image="mirror.gcr.io/library/${image#docker.io/library/}"
+            echo "Docker Hub 拉取失败，回退到 $mirror_image"
+            docker pull "$mirror_image"
+            docker tag "$mirror_image" "$image"
+          fi
+
+      - name: 生成一次性测试证书
+        run: |
+          set -euo pipefail
+          mkdir -p certs
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout certs/test.key -out certs/test.crt \
+            -days 1 -subj "/CN=localhost"
+
+      - name: 在 ${{ matrix.distro }}-${{ matrix.arch }} 中运行冒烟测试
+        env:
+          VERSION: ${{ needs.resolve.outputs.nginx_version }}
+        run: |
+          set -euo pipefail
+          openssl_ver="$(python3 -c 'import glob,json; print(json.load(open(glob.glob("artifact/*.build-info.json")[0]))["dependencies"]["openssl"])')"
+          docker run --rm \
+            -v "$PWD/artifact:/artifact:ro" \
+            -v "$PWD/components/nginx/smoke-test.sh:/smoke-test.sh:ro" \
+            -v "$PWD/certs:/certs:ro" \
+            -e NGINX_VERSION="$VERSION" \
+            -e OPENSSL_VERSION="$openssl_ver" \
+            "${{ matrix.base_image }}" \
+            bash /smoke-test.sh
+
+  release:
+    name: 发布 GitHub Release
+    needs: [resolve, test]
+    if: needs.resolve.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 汇总产物与校验和
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          shopt -s nullglob
+          for dir in artifacts/nginx-*/; do
+            for f in "$dir"*; do
+              if [ "$(basename "$f")" = "SHA256SUMS" ]; then
+                continue
+              fi
+              cp "$f" release/
+            done
+          done
+          cp artifacts/sources/source-metadata.json release/
+          cp artifacts/sources/nginx.lock.resolved.json release/
+          ( cd release && sha256sum ./* > SHA256SUMS )
+          echo "发布资产:"; ls -l release
+
+      - name: 生成 Release 说明
+        env:
+          VERSION: ${{ needs.resolve.outputs.nginx_version }}
+        run: |
+          set -euo pipefail
+          bash scripts/render-release-notes.sh "$VERSION" artifacts release-notes.md
+
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve.outputs.nginx_version }}
+        run: |
+          set -euo pipefail
+          tag="nginx-${VERSION}"
+          shopt -s nullglob
+          assets=(release/*)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "没有可发布的资产" >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" --title "nginx ${VERSION}" --notes-file release-notes.md
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --title "nginx ${VERSION}" \
+              --notes-file release-notes.md \
+              --target "$GITHUB_SHA"
+          fi
+
+      - name: 回写 lockfile（尽力而为）
+        continue-on-error: true
+        env:
+          VERSION: ${{ needs.resolve.outputs.nginx_version }}
+        run: |
+          set -euo pipefail
+          resolved="artifacts/sources/nginx.lock.resolved.json"
+          [ -f "$resolved" ] || { echo "未找到 resolved lockfile，跳过"; exit 0; }
+          current="$(python3 scripts/lockfile.py get lock/nginx.lock.json nginx version)"
+          newest="$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n 1)"
+          if [ "$newest" != "$VERSION" ]; then
+            echo "本次为旧版本 ${VERSION} 的显式重建，不更新 lockfile"
+            exit 0
+          fi
+          cp "$resolved" lock/nginx.lock.json
+          if git diff --quiet -- lock/nginx.lock.json; then
+            echo "lockfile 无变化"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lock/nginx.lock.json
+          git commit -m "chore(nginx): 锁定 ${VERSION} 源码 [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

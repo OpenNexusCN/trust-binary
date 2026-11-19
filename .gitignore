@@ -1,0 +1,7 @@
+/dist/
+/work/
+/artifacts/
+/release/
+/certs/
+*.tmp
+__pycache__/

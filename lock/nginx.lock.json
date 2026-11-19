@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "updated_at": "2026-11-19T00:00:00Z",
+  "components": {
+    "nginx": {
+      "version": "1.30.7",
+      "sha256": "2565b5c837050e958f70fb0f73c48e2bca4542ad349fd356f46fb0c72610bc6e",
+      "key_file": "keys/nginx-pluknet.asc",
+      "signer_fingerprint": "D6786CE303D9A9022998DC6CC8464D549AF75C0A",
+      "downloads": [
+        {
+          "url_template": "https://nginx.org/download/nginx-{version}.tar.gz",
+          "signature_url_template": "https://nginx.org/download/nginx-{version}.tar.gz.asc",
+          "file_name_template": "nginx-{version}.tar.gz"
+        }
+      ]
+    },
+    "openssl": {
+      "version": "3.5.9",
+      "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+      "key_file": "keys/openssl-release.asc",
+      "signer_fingerprint": "C46ED3F2CBEFDA1FDAADA44264ED7B1DCCE71CB2",
+      "downloads": [
+        {
+          "url_template": "https://www.openssl.org/source/openssl-{version}.tar.gz",
+          "signature_url_template": "https://www.openssl.org/source/openssl-{version}.tar.gz.asc",
+          "file_name_template": "openssl-{version}.tar.gz"
+        },
+        {
+          "url_template": "https://github.com/openssl/openssl/releases/download/openssl-{version}/openssl-{version}.tar.gz",
+          "signature_url_template": "https://github.com/openssl/openssl/releases/download/openssl-{version}/openssl-{version}.tar.gz.asc",
+          "file_name_template": "openssl-{version}.tar.gz"
+        }
+      ]
+    },
+    "pcre2": {
+      "version": "10.49",
+      "sha256": "929f0b20e62879252a15886b06c89f1edef61a363cbd5826fb041080a5e557ae",
+      "key_file": "keys/pcre2-nicholas-wilson.asc",
+      "signer_fingerprint": "BACF71F10404D5761C09D392021DE40BFB63B406",
+      "downloads": [
+        {
+          "url_template": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{version}/pcre2-{version}.tar.gz",
+          "signature_url_template": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{version}/pcre2-{version}.tar.gz.sig",
+          "file_name_template": "pcre2-{version}.tar.gz"
+        }
+      ]
+    },
+    "zlib": {
+      "version": "1.4",
+      "sha256": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+      "key_file": "keys/zlib-mark-adler.asc",
+      "signer_fingerprint": "5ED46A6721D365587791E2AA783FCD8E58BCAFBA",
+      "downloads": [
+        {
+          "url_template": "https://zlib.net/zlib-{version}.tar.gz",
+          "signature_url_template": "https://zlib.net/zlib-{version}.tar.gz.asc",
+          "file_name_template": "zlib-{version}.tar.gz"
+        },
+        {
+          "url_template": "https://zlib.net/fossils/zlib-{version}.tar.gz",
+          "signature_url_template": "https://zlib.net/fossils/zlib-{version}.tar.gz.asc",
+          "file_name_template": "zlib-{version}.tar.gz"
+        }
+      ]
+    }
+  }
+}

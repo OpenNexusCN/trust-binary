@@ -1,0 +1,50 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: 脚本与锁文件检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell 语法检查
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git ls-files '*.sh')
+          for f in "${files[@]}"; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Python 语法检查
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/lockfile.py
+
+      - name: JSON 校验
+        run: python3 -m json.tool lock/nginx.lock.json >/dev/null
+
+      - name: lockfile 单元测试
+        run: python3 -m unittest discover -s tests -v
+
+      - name: 源码校验流程端到端测试（GPG + SHA256）
+        run: bash tests/verify-sources-test.sh
+
+      - name: ShellCheck
+        run: |
+          set -euo pipefail
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck --severity=error $(git ls-files '*.sh')
+          else
+            echo "shellcheck 不可用，跳过"
+          fi
