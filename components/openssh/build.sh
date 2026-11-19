@@ -101,7 +101,9 @@ ZLIB_INSTALL="$WORK_DIR/zlib-install"
 
 stage "构建 OpenSSL（静态）"
 cd "$WORK_DIR/openssl-${OPENSSL_VERSION}"
-./config --prefix="$OPENSSL_INSTALL" --libdir=lib no-shared no-tests -fPIC
+# no-dso/no-engine: OpenSSH 不需要 DSO/ENGINE，避免 libcrypto.a 引入 dlclose 依赖
+# （Ubuntu 18.04/20.04 的 glibc 把 libdl 独立出来，静态链接容易缺符号）
+./config --prefix="$OPENSSL_INSTALL" --libdir=lib no-shared no-tests no-dso no-engine -fPIC
 make -j"$(nproc)"
 make install_sw
 "$OPENSSL_INSTALL/bin/openssl" version
@@ -115,9 +117,11 @@ make install
 stage "构建 OpenSSH"
 cd "$WORK_DIR/openssh-${OPENSSH_VERSION}"
 mapfile -t CONFIGURE_ARGS < <(openssh_configure_args "$WORK_DIR" "$DISTRO")
+# 旧 glibc 上 libdl/libpthread 是独立共享库；Ubuntu 默认 --as-needed 可能
+# 在 libcrypto 之前把 -ldl/-lpthread 丢掉，因此显式关闭 as-needed。
 CFLAGS="$(hardening_cflags)" \
 LDFLAGS="-Wl,-z,relro -Wl,-z,now" \
-LIBS="-ldl -lpthread" \
+LIBS="-Wl,--no-as-needed -ldl -lpthread -Wl,--as-needed" \
     ./configure "${CONFIGURE_ARGS[@]}"
 make -j"$(nproc)"
 
