@@ -11,6 +11,10 @@ FROM ${BASE_IMAGE}
 # 全局 ARG 需要在本阶段重新声明后才能被 RUN 使用
 ARG CENTOS_VAULT_BASE
 
+# SCLo 仓库由独立的 CentOS SCLo SIG 密钥签名，不能用 CentOS-7 主密钥校验。
+# 公钥指纹: C4DBD535B1FBBA14F8BA64A84EB84E71F2EE9D55
+COPY docker/keys/RPM-GPG-KEY-CentOS-SIG-SCLo /opt/trust-binary/RPM-GPG-KEY-CentOS-SIG-SCLo
+
 RUN set -eux; \
     sed -i \
         -e 's|^mirrorlist=|#mirrorlist=|' \
@@ -22,12 +26,12 @@ RUN set -eux; \
         'name=CentOS-7 - SCLo rh' \
         "baseurl=${CENTOS_VAULT_BASE}/7.9.2009/sclo/x86_64/rh/" \
         'gpgcheck=1' \
-        'gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7' \
+        'gpgkey=file:///opt/trust-binary/RPM-GPG-KEY-CentOS-SIG-SCLo' \
         'enabled=1' \
         > /etc/yum.repos.d/CentOS-SCLo-rh.repo; \
     yum -y install gcc gcc-c++ make perl; \
-    yum -y install devtoolset-11-gcc devtoolset-11-gcc-c++ \
-        || echo "devtoolset-11 不可用，回退到系统 gcc 4.8"; \
+    yum -y install devtoolset-11-gcc devtoolset-11-gcc-c++; \
+    test -x /opt/rh/devtoolset-11/root/usr/bin/gcc; \
     yum clean all; \
     rm -rf /var/cache/yum
 
