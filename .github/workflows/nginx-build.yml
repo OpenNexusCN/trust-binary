@@ -327,6 +327,7 @@ jobs:
         run: |
           set -euo pipefail
           openssl_ver="$(python3 -c 'import glob,json; print(json.load(open(glob.glob("artifact/*.build-info.json")[0]))["dependencies"]["openssl"])')"
+          set +e
           docker run --rm \
             -v "$PWD/artifact:/artifact:ro" \
             -v "$PWD/components/nginx/smoke-test.sh:/smoke-test.sh:ro" \
@@ -334,7 +335,15 @@ jobs:
             -e NGINX_VERSION="$VERSION" \
             -e OPENSSL_VERSION="$openssl_ver" \
             "${{ matrix.base_image }}" \
-            bash /smoke-test.sh
+            bash /smoke-test.sh 2>&1 | tee smoke-test.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            summary="$(grep -E 'FAIL:|ERROR|not found|error while loading' smoke-test.log | tail -n 3 | tr '\n' ' ' | cut -c1-900 || true)"
+            [ -n "$summary" ] || summary="$(tail -n 3 smoke-test.log | tr '\n' ' ' | cut -c1-900 || true)"
+            echo "::error title=冒烟测试失败 (${{ matrix.distro }}-${{ matrix.arch }})::$summary"
+            exit "$rc"
+          fi
 
   release:
     name: 发布 GitHub Release

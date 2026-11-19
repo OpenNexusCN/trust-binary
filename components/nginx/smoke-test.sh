@@ -37,10 +37,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BIN="$(find "$ARTIFACT_DIR" -maxdepth 1 -type f -name "nginx-*-$(uname -m)" -print -quit)"
-[ -n "$BIN" ] || fail "在 $ARTIFACT_DIR 未找到 nginx 二进制"
-chmod 0755 "$BIN"
-echo "测试对象: $BIN"
+BIN_SRC="$(find "$ARTIFACT_DIR" -maxdepth 1 -type f -name "nginx-*-$(uname -m)" -print -quit)"
+[ -n "$BIN_SRC" ] || fail "在 $ARTIFACT_DIR 未找到 nginx 二进制"
+
+# upload/download-artifact 不保留可执行位，而 /artifact 通常只读挂载；
+# 复制到可写目录后再设置执行位。
+BIN="$PREFIX/nginx"
+install -m 0755 "$BIN_SRC" "$BIN" || fail "复制二进制失败: $BIN_SRC"
+echo "测试对象: $BIN_SRC"
 
 mkdir -p "$PREFIX/logs" "$PREFIX/html"
 mkdir -p "$PREFIX/temp/client_temp" "$PREFIX/temp/proxy_temp" \
