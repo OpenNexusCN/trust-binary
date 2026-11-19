@@ -8,6 +8,7 @@
 | OpenSSL | `openssl-release.asc` | `B146647E45A7B33947AB226B2A2C87D161692D40` | 校验 `openssl-*.tar.gz.asc` | keys.openpgp.org（UID: `OpenSSL <openssl@openssl.org>`） |
 | PCRE2 | `pcre2-nicholas-wilson.asc` | `A95536204A3BB489715231282A98E77EB6F24CA8` | 校验 `pcre2-*.tar.gz.sig` | keys.openpgp.org（UID: `Nicholas Wilson <nicholas@nicholaswilson.me.uk>`） |
 | zlib | `zlib-mark-adler.asc` | `5ED46A6721D365587791E2AA783FCD8E58BCAFBA` | 校验 `zlib-*.tar.gz.asc` | keys.openpgp.org（UID: `Mark Adler <madler@alumni.caltech.edu>`） |
+| OpenSSH | `openssh-damien-miller.asc` | `7168B983815A5EEF59A4ADFD2A3F414E736060BA` | 校验 `openssh-*.tar.gz.asc` | keyserver.ubuntu.com（UID: `Damien Miller <djm@mindrot.org>`；OpenSSH 8.7 起启用的发布签名密钥） |
 
 说明：
 

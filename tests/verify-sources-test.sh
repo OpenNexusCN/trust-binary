@@ -88,12 +88,12 @@ lock = {
     "updated_at": "2026-01-01T00:00:00Z",
     "components": components,
 }
-(work / "lock.json").write_text(json.dumps(lock, indent=2), encoding="utf-8")
+(work / "nginx.lock.json").write_text(json.dumps(lock, indent=2), encoding="utf-8")
 PY
 
 echo "=== 1. 合法流程应成功 ==="
 PREPARE_LOG="$WORK/prepare-ok.log"
-if ! bash "$ROOT_DIR/scripts/prepare-sources.sh" "$WORK/out" "$WORK/lock.json" 1.2.3 \
+if ! bash "$ROOT_DIR/scripts/prepare-sources.sh" "$WORK/out" "$WORK/nginx.lock.json" 1.2.3 \
     > "$PREPARE_LOG" 2>&1; then
     echo "FAIL: 合法流程失败" >&2
     cat "$PREPARE_LOG" >&2
@@ -111,7 +111,7 @@ import sys
 from pathlib import Path
 
 work = Path(sys.argv[1])
-lock = json.loads((work / "lock.json").read_text(encoding="utf-8"))
+lock = json.loads((work / "nginx.lock.json").read_text(encoding="utf-8"))
 lock["components"]["nginx"]["sha256"] = "f" * 64
 (work / "lock-badsha.json").write_text(json.dumps(lock, indent=2), encoding="utf-8")
 PY
@@ -125,7 +125,7 @@ echo "PASS: SHA256 不符被拒绝"
 
 echo "=== 3. 源码篡改应失败 ==="
 printf 'tampered' >> "$WORK/zlib-1.4.tar.gz"
-if bash "$ROOT_DIR/scripts/prepare-sources.sh" "$WORK/out-tampered" "$WORK/lock.json" 1.2.3 \
+if bash "$ROOT_DIR/scripts/prepare-sources.sh" "$WORK/out-tampered" "$WORK/nginx.lock.json" 1.2.3 \
     > "$WORK/prepare-tampered.log" 2>&1; then
     echo "FAIL: 篡改源码仍被接受" >&2
     exit 1

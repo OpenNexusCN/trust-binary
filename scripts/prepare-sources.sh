@@ -2,18 +2,21 @@
 # 下载并校验所有上游源码（GPG 验签 + SHA256 锁定），生成供构建使用的源码目录。
 #
 # 用法:
-#   prepare-sources.sh <out_dir> [lockfile] [nginx_version]
+#   prepare-sources.sh <out_dir> [lockfile] [override_version] [override_component]
+#
+#   override_component 默认 nginx；例如 OpenSSH:
+#   prepare-sources.sh work lock/openssh.lock.json 10.6p2 openssh
 #
 # 产物:
 #   <out_dir>/sources/<tarball>                 已验签的源码包
 #   <out_dir>/sources/MANIFEST.sha256           源码包哈希清单
-#   <out_dir>/nginx.lock.resolved.json          本次构建实际使用的锁定文件
+#   <out_dir>/<name>.lock.resolved.json          本次构建实际使用的锁定文件
 #   <out_dir>/source-metadata.json              版本/哈希/签名者信息
 #
 # 安全模型:
 #   1. 所有源码必须通过 GPG 验签，且签名者指纹必须与 lockfile 中固定值一致；
 #   2. lockfile 中已有 sha256 的组件必须匹配；
-#   3. 新 nginx 版本（尚未锁定）在 GPG 验签通过后记录其 sha256。
+#   3. 新版本（尚未锁定）在 GPG 验签通过后记录其 sha256。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,11 +24,12 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-OUT_DIR="${1:?用法: prepare-sources.sh <out_dir> [lockfile] [nginx_version]}"
+OUT_DIR="${1:?用法: prepare-sources.sh <out_dir> [lockfile] [override_version] [override_component]}"
 LOCK_FILE="${2:-$ROOT_DIR/lock/nginx.lock.json}"
-TARGET_NGINX="${3:-}"
+TARGET_VERSION="${3:-}"
+TARGET_COMPONENT="${4:-nginx}"
 
-[ -n "$TARGET_NGINX" ] && validate_version "$TARGET_NGINX"
+[ -n "$TARGET_VERSION" ] && validate_component_version "$TARGET_COMPONENT" "$TARGET_VERSION"
 
 SRC_DIR="$OUT_DIR/sources"
 mkdir -p "$SRC_DIR"
@@ -53,9 +57,9 @@ declare -a ORDER=()
 
 EXPORT_FILE="$(mktemp "$OUT_DIR/.export.XXXXXX")"
 TMP_FILES+=("$EXPORT_FILE")
-if [ -n "$TARGET_NGINX" ]; then
+if [ -n "$TARGET_VERSION" ]; then
     "$PYTHON" "$SCRIPT_DIR/lockfile.py" export "$LOCK_FILE" \
-        --nginx-version "$TARGET_NGINX" > "$EXPORT_FILE"
+        --override "$TARGET_COMPONENT=$TARGET_VERSION" > "$EXPORT_FILE"
 else
     "$PYTHON" "$SCRIPT_DIR/lockfile.py" export "$LOCK_FILE" > "$EXPORT_FILE"
 fi
@@ -165,10 +169,11 @@ for name in "${ORDER[@]}"; do
 done
 
 # 生成实际使用的 lockfile：对本次新获取/未锁定的组件回写版本与哈希
-RESOLVED_LOCK="$OUT_DIR/nginx.lock.resolved.json"
-LOCKED_NGINX_VERSION="$("$PYTHON" "$SCRIPT_DIR/lockfile.py" get "$LOCK_FILE" nginx version)"
-if [ -n "$TARGET_NGINX" ] && [ "$TARGET_NGINX" != "$LOCKED_NGINX_VERSION" ]; then
-    log "更新 nginx 版本: $LOCKED_NGINX_VERSION -> $TARGET_NGINX"
+LOCK_NAME="$(basename "$LOCK_FILE" .json)"
+RESOLVED_LOCK="$OUT_DIR/${LOCK_NAME}.resolved.json"
+LOCKED_VERSION="$("$PYTHON" "$SCRIPT_DIR/lockfile.py" get "$LOCK_FILE" "$TARGET_COMPONENT" version)"
+if [ -n "$TARGET_VERSION" ] && [ "$TARGET_VERSION" != "$LOCKED_VERSION" ]; then
+    log "更新 $TARGET_COMPONENT 版本: $LOCKED_VERSION -> $TARGET_VERSION"
 fi
 cp "$LOCK_FILE" "$RESOLVED_LOCK"
 for name in "${ORDER[@]}"; do
@@ -220,4 +225,4 @@ PY
 rm -f "$OUT_DIR/.components.tsv"
 
 log "源码准备完成: $SRC_DIR"
-"$PYTHON" "$SCRIPT_DIR/lockfile.py" summary "$OUT_DIR/nginx.lock.resolved.json"
+"$PYTHON" "$SCRIPT_DIR/lockfile.py" summary "$RESOLVED_LOCK"

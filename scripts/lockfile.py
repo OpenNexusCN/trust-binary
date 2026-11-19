@@ -20,13 +20,20 @@ import re
 import sys
 from pathlib import Path
 
-COMPONENT_ORDER = ("nginx", "openssl", "pcre2", "zlib")
+COMPONENT_ORDER = ("openssh", "nginx", "openssl", "pcre2", "zlib")
 FIELD_SEP = "|"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 FPR_RE = re.compile(r"^[0-9A-Fa-f]{16}$|^[0-9A-Fa-f]{40}$")
-# nginx 版本固定为 X.Y.Z；其他组件允许 X.Y 或 X.Y.Z（如 zlib 1.4、PCRE2 10.49）
+# nginx 版本固定为 X.Y.Z；其他组件允许 X.Y / X.Y.Z / X.YpN
+# （如 zlib 1.4、PCRE2 10.49、OpenSSH 10.6p2）
 NGINX_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-COMPONENT_VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)+$")
+COMPONENT_VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)+(p[0-9]+)?$")
+
+
+def validate_component_version(name: str, version: str) -> None:
+    pattern = NGINX_VERSION_RE if name == "nginx" else COMPONENT_VERSION_RE
+    if not pattern.match(version):
+        sys.exit(f"[lockfile] 非法版本号: {name}={version!r}")
 
 
 def load_lock(path: Path) -> dict:
@@ -84,17 +91,25 @@ def render(template: str, version: str) -> str:
 
 def cmd_export(args: argparse.Namespace) -> int:
     data = load_lock(Path(args.lock))
-    nginx_override = args.nginx_version
-    if nginx_override:
-        if not NGINX_VERSION_RE.match(nginx_override):
-            sys.exit(f"[lockfile] 非法 nginx 版本: {nginx_override!r}")
+    overrides: dict[str, str] = {}
+    if args.nginx_version:
+        validate_component_version("nginx", args.nginx_version)
+        overrides["nginx"] = args.nginx_version
+    for item in args.override:
+        name, sep, version = item.partition("=")
+        if not sep or not name or not version:
+            sys.exit(f"[lockfile] --override 参数格式应为 NAME=VERSION: {item!r}")
+        find_component(data, name)
+        validate_component_version(name, version)
+        overrides[name] = version
+
     for name, comp in ordered_components(data):
         validate_component(name, comp)
         version = comp["version"]
         sha = comp.get("sha256", "")
-        if name == "nginx" and nginx_override and nginx_override != version:
+        if name in overrides and overrides[name] != version:
             # 新版本尚未锁定：签名验证通过后再计算哈希
-            version = nginx_override
+            version = overrides[name]
             sha = ""
         for dl in comp["downloads"]:
             url = render(dl["url_template"], version)
@@ -138,9 +153,7 @@ def cmd_set(args: argparse.Namespace) -> int:
     data = load_lock(Path(args.lock))
     comp = find_component(data, args.component)
     if args.version is not None:
-        pattern = NGINX_VERSION_RE if args.component == "nginx" else COMPONENT_VERSION_RE
-        if not pattern.match(args.version):
-            sys.exit(f"[lockfile] 非法版本号: {args.version!r}")
+        validate_component_version(args.component, args.version)
         comp["version"] = args.version
     if args.sha256 is not None:
         if not SHA256_RE.match(args.sha256):
@@ -166,7 +179,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_export = sub.add_parser("export", help="导出下载清单")
     p_export.add_argument("lock")
-    p_export.add_argument("--nginx-version", default="", help="覆盖 nginx 版本（新版本 sha256 留空）")
+    p_export.add_argument("--nginx-version", default="", help="覆盖 nginx 版本（兼容旧用法）")
+    p_export.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        metavar="NAME=VERSION",
+        help="覆盖任意组件版本（新版本 sha256 留空），可重复",
+    )
     p_export.set_defaults(func=cmd_export)
 
     p_get = sub.add_parser("get", help="读取字段")

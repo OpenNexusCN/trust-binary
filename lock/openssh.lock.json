@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "updated_at": "2026-11-19T05:34:47Z",
+  "components": {
+    "openssh": {
+      "version": "10.6p2",
+      "sha256": "9ae44872090cf2f06b3cf9ff147e7f16f309671340763ed2f99248398ae29d5b",
+      "key_file": "keys/openssh-damien-miller.asc",
+      "signer_fingerprint": "7168B983815A5EEF59A4ADFD2A3F414E736060BA",
+      "downloads": [
+        {
+          "url_template": "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-{version}.tar.gz",
+          "signature_url_template": "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-{version}.tar.gz.asc",
+          "file_name_template": "openssh-{version}.tar.gz"
+        },
+        {
+          "url_template": "https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-{version}.tar.gz",
+          "signature_url_template": "https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-{version}.tar.gz.asc",
+          "file_name_template": "openssh-{version}.tar.gz"
+        }
+      ]
+    },
+    "openssl": {
+      "version": "3.5.9",
+      "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+      "key_file": "keys/openssl-release.asc",
+      "signer_fingerprint": "C46ED3F2CBEFDA1FDAADA44264ED7B1DCCE71CB2",
+      "downloads": [
+        {
+          "url_template": "https://www.openssl.org/source/openssl-{version}.tar.gz",
+          "signature_url_template": "https://www.openssl.org/source/openssl-{version}.tar.gz.asc",
+          "file_name_template": "openssl-{version}.tar.gz"
+        },
+        {
+          "url_template": "https://github.com/openssl/openssl/releases/download/openssl-{version}/openssl-{version}.tar.gz",
+          "signature_url_template": "https://github.com/openssl/openssl/releases/download/openssl-{version}/openssl-{version}.tar.gz.asc",
+          "file_name_template": "openssl-{version}.tar.gz"
+        }
+      ]
+    },
+    "zlib": {
+      "version": "1.4",
+      "sha256": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+      "key_file": "keys/zlib-mark-adler.asc",
+      "signer_fingerprint": "5ED46A6721D365587791E2AA783FCD8E58BCAFBA",
+      "downloads": [
+        {
+          "url_template": "https://zlib.net/zlib-{version}.tar.gz",
+          "signature_url_template": "https://zlib.net/zlib-{version}.tar.gz.asc",
+          "file_name_template": "zlib-{version}.tar.gz"
+        },
+        {
+          "url_template": "https://zlib.net/fossils/zlib-{version}.tar.gz",
+          "signature_url_template": "https://zlib.net/fossils/zlib-{version}.tar.gz.asc",
+          "file_name_template": "zlib-{version}.tar.gz"
+        }
+      ]
+    }
+  }
+}

@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "lockfile.py"
 LOCK = ROOT / "lock" / "nginx.lock.json"
+OPENSSH_LOCK = ROOT / "lock" / "openssh.lock.json"
 VALID_SHA = "a" * 64
 
 
@@ -130,6 +131,53 @@ class LockfileTests(unittest.TestCase):
             "nginx",
             "--version",
             "1.30",
+            "--sha256",
+            VALID_SHA,
+            "--out",
+            str(out),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(out.exists())
+
+    def test_export_openssh_override_clears_sha(self) -> None:
+        result = run_lockfile(
+            "export", str(OPENSSH_LOCK), "--override", "openssh=10.7p1"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = [line.split("|") for line in result.stdout.splitlines() if line]
+        openssh_row = next(row for row in rows if row[0] == "openssh")
+        self.assertEqual(openssh_row[1], "10.7p1")
+        self.assertEqual(openssh_row[2], "")
+        openssl_row = next(row for row in rows if row[0] == "openssl")
+        self.assertRegex(openssl_row[2], r"^[0-9a-f]{64}$")
+
+    def test_set_accepts_openssh_p_version(self) -> None:
+        out = self.workdir / "openssh.json"
+        result = run_lockfile(
+            "set",
+            str(OPENSSH_LOCK),
+            "--component",
+            "openssh",
+            "--version",
+            "10.6p2",
+            "--sha256",
+            VALID_SHA,
+            "--out",
+            str(out),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(data["components"]["openssh"]["version"], "10.6p2")
+
+    def test_set_rejects_invalid_openssh_version(self) -> None:
+        out = self.workdir / "openssh-bad.json"
+        result = run_lockfile(
+            "set",
+            str(OPENSSH_LOCK),
+            "--component",
+            "openssh",
+            "--version",
+            "v10.6p2",
             "--sha256",
             VALID_SHA,
             "--out",

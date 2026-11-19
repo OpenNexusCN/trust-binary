@@ -37,7 +37,18 @@ sha256_file() {
     fi
 }
 
-# 简单的版本校验：X.Y.Z
+# 版本校验：nginx 固定 X.Y.Z
 validate_version() {
     [[ "${1:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "非法版本号: '${1:-}'（期望 X.Y.Z）"
+}
+
+# 组件版本校验：nginx 为 X.Y.Z；其他组件允许 X.Y / X.Y.Z / X.YpN
+validate_component_version() {
+    local name="$1" version="${2:-}"
+    if [ "$name" = "nginx" ]; then
+        validate_version "$version"
+    else
+        [[ "$version" =~ ^[0-9]+(\.[0-9]+)+(p[0-9]+)?$ ]] \
+            || die "非法版本号: '${version}'（期望 X.Y、X.Y.Z 或 X.YpN）"
+    fi
 }

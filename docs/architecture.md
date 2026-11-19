@@ -157,6 +157,51 @@ CentOS 7 若回退到 gcc 4.8，会自动把 `-fstack-protector-strong` 降级�
 | ARM 任务无法启动 | 套餐不含 GitHub ARM runner | 设置仓库变量 `ARM64_RUNNER` 指向自托管 ARM runner 标签 |
 | x86 产物跑在 ARM | 架构不匹配 | 使用对应的 `aarch64` 产物 |
 
+## OpenSSH 组件
+
+### 源码与信任链
+
+- 上游：`https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/`（备用 `ftp.openbsd.org`）；
+- 签名者：Damien Miller（OpenSSH 8.7 起启用的发布签名密钥），指纹
+  `7168B983815A5EEF59A4ADFD2A3F414E736060BA`，公钥固定于 `keys/openssh-damien-miller.asc`；
+- 最新版本自动从官方目录解析（`X.YpZ`），也可手动指定。
+
+### 构建决策
+
+- **静态链接 OpenSSL / zlib**：构建时先把 OpenSSL、zlib 安装到私有前缀，再让 OpenSSH 的
+  `--with-ssl-dir` / `--with-zlib` 指向该前缀；`ldd sshd` 不出现 libcrypto/libssl/libz。
+- **PAM 动态链接**：使用 `--with-pam`，运行时依赖目标发行版的 libpam 与 `/etc/pam.d/sshd`；
+  这符合发行版官方 sshd 的认证行为。
+- **libexecdir 按发行版区分**：Ubuntu 为 `/usr/lib/openssh`，CentOS/Rocky 为 `/usr/libexec/openssh`。
+- **sshd-session / sshd-auth**：OpenSSH 9.8+ 把会话与认证拆到 libexecdir 下的独立程序；
+  `sshd` 按编译期路径 exec 它们，因此必须与 `sshd` 同版本、同包发布。
+- **安装与打包**：`make install-nosysconf DESTDIR=...`，只打包 `usr/`；不覆盖 `/etc/ssh`、
+  主机密钥和 PAM 配置。`ssh-keysign` 的 setuid 位由 tar 保留。
+- 不启用 GSSAPI、SELinux、audit、libedit、FIDO2，避免引入额外动态依赖；按需可扩展。
+
+### 冒烟测试
+
+在目标发行版容器中把产物解包到 `/`，创建 `sshd` 用户与 `/run/sshd`，用一次性 ed25519 主机/客户端密钥：
+
+1. `sshd -t` 校验配置；
+2. 启动 sshd 并真实 SSH 登录；
+3. `scp` 上传（走 SFTP 子系统，验证 sftp-server 路径）；
+4. `ssh-agent` + `ssh-add` 后通过 Agent 登录；
+5. 校验 `ssh -V` 的 OpenSSH/OpenSSL 版本与 `ldd` 依赖。
+
+### 与 CVE 的关系
+
+当前锁定的 OpenSSH 10.6p2 已覆盖：
+
+| CVE | 受影响程序 |
+|-----|-----------|
+| CVE-2023-38408 | ssh-agent / ssh-pkcs11-helper |
+| CVE-2023-28531 | ssh-add |
+| CVE-2023-51385 | ssh 客户端 |
+| CVE-2024-6387 | sshd（glibc Linux 未认证 RCE） |
+
+替换时请保持 `sshd`、`sshd-session`、`sshd-auth` 同版本；客户端侧还需重启使用中的 `ssh-agent`。
+
 ## 后续扩展
 
 - **更多架构组合**：为 Rocky 9 / RHEL 9 增加 aarch64（`rockylinux:9` 支持多架构），
