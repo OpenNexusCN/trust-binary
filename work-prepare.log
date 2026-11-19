@@ -1,0 +1,8 @@
+[trust-binary] 导入 nginx 的签名公钥: /d/works/OpenNexusCN/trust-binary/keys/nginx-pluknet.asc
+[trust-binary] 下载 nginx 1.30.7: https://nginx.org/download/nginx-1.30.7.tar.gz
+[trust-binary] ✓ nginx 1.30.7 验签与 SHA256 校验通过
+[trust-binary] 导入 openssl 的签名公钥: /d/works/OpenNexusCN/trust-binary/keys/openssl-release.asc
+[trust-binary] 下载 openssl 3.5.9: https://www.openssl.org/source/openssl-3.5.9.tar.gz
+[trust-binary] ✓ openssl 3.5.9 验签与 SHA256 校验通过
+[trust-binary] 导入 pcre2 的签名公钥: /d/works/OpenNexusCN/trust-binary/keys/pcre2-nicholas-wilson.asc
+[trust-binary] 下载 pcre2 10.49: https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.gz

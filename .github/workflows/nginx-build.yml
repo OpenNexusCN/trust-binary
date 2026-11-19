@@ -203,6 +203,22 @@ jobs:
             bash /opt/trust-binary/build.sh
           ls -l dist
 
+      - name: 提取失败原因并写入 annotation
+        if: failure()
+        run: |
+          set -euo pipefail
+          log="$PWD/dist/build.log"
+          if [ ! -f "$log" ]; then
+            echo "未找到 dist/build.log"
+            exit 0
+          fi
+          echo "===== 关键错误行 ====="
+          grep -nE 'error:|fatal error|Error [0-9]+|undefined reference|No rule to make target|configure: error|command not found' "$log" | tail -n 25 || true
+          summary="$(grep -E 'error:|fatal error|undefined reference|No rule to make target|configure: error|command not found' "$log" | tail -n 3 | tr '\n' ' ' | cut -c1-900 || true)"
+          if [ -n "$summary" ]; then
+            echo "::error title=构建失败 (${{ matrix.distro }}-${{ matrix.arch }})::$summary"
+          fi
+
       - name: 上传失败诊断日志
         if: failure()
         uses: actions/upload-artifact@v4
