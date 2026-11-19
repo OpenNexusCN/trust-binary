@@ -203,6 +203,17 @@ jobs:
             bash /opt/trust-binary/build.sh
           ls -l dist
 
+      - name: 上传失败诊断日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-${{ matrix.distro }}-${{ matrix.arch }}
+          path: |
+            dist/build.log
+            dist/diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:

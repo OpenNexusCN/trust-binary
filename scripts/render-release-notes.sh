@@ -28,8 +28,9 @@ METADATA="$ARTIFACTS_DIR/sources/source-metadata.json"
     echo "|-------------|------|"
     for dir in "$ARTIFACTS_DIR"/nginx-*/; do
         [ -d "$dir" ] || continue
-        tarball="$(find "$dir" -maxdepth 1 -name '*.tar.gz' -printf '%f\n' | head -n 1)"
+        tarball="$(find "$dir" -maxdepth 1 -name '*.tar.gz' -print -quit)"
         [ -n "$tarball" ] || continue
+        tarball="$(basename "$tarball")"
         distro="$(basename "$dir")"
         distro="${distro#nginx-${VERSION}-}"
         echo "| ${distro} | \`${tarball}\` |"

@@ -6,13 +6,24 @@
 nginx_configure_args() {
     local work="${1:?nginx_configure_args 需要工作目录}"
 
-    local cc_opt="-O2 -fPIC -fstack-protector-strong -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2"
-
+    local stack_flag="-fstack-protector-strong"
     # CentOS 7 自带 gcc 4.8 不支持 -fstack-protector-strong
     if ! printf 'int main(void){return 0;}\n' \
         | gcc -x c -fstack-protector-strong -c -o /dev/null - 2>/dev/null; then
-        cc_opt="-O2 -fPIC -fstack-protector -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2"
+        stack_flag="-fstack-protector"
     fi
+
+    # Ubuntu 24.04 的 GCC 13 默认定义 _FORTIFY_SOURCE=3；使用普通 -D 可以让
+    # 编译器的默认值让路，避免 "-Werror" 下的重复定义错误。若目标编译器仍强制
+    # 自带更高等级（探测失败），则直接采用发行版默认值。
+    local fortify_flag="-D_FORTIFY_SOURCE=2"
+    if ! printf 'int main(void){return 0;}\n' \
+        | gcc -x c -O2 -Werror "$fortify_flag" -c -o /dev/null - 2>/dev/null; then
+        fortify_flag=""
+    fi
+
+    local cc_opt="-O2 -fPIC $stack_flag -Wformat -Werror=format-security $fortify_flag"
+    cc_opt="${cc_opt% }"
 
     cat <<EOF_ARGS
 --prefix=/etc/nginx

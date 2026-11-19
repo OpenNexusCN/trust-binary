@@ -154,8 +154,8 @@ assert_ok() {
     if ! response="$(http_get "$port" /health.txt)"; then
         fail "$label: 请求 127.0.0.1:$port 失败"
     fi
-    printf '%s' "$response" | grep -q '200 OK' || fail "$label: 未返回 200"
-    printf '%s' "$response" | grep -q "$MARKER" || fail "$label: 响应内容不符"
+    grep -q '200 OK' <<< "$response" || fail "$label: 未返回 200"
+    grep -q "$MARKER" <<< "$response" || fail "$label: 响应内容不符"
     echo "  ✓ $label (127.0.0.1:$port)"
 }
 

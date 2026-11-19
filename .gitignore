@@ -3,5 +3,6 @@
 /artifacts/
 /release/
 /certs/
+/.debuglogs/
 *.tmp
 __pycache__/

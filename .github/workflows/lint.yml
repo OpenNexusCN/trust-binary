@@ -48,3 +48,12 @@ jobs:
           else
             echo "shellcheck 不可用，跳过"
           fi
+
+      - name: 禁止 pipefail 下的 head 管道
+        run: |
+          set -euo pipefail
+          if git grep -nE '\|[[:space:]]*head([[:space:]]|$)' -- '*.sh'; then
+            echo "::error::脚本启用了 pipefail，禁止 '... | head'（会触发 SIGPIPE 141）"
+            exit 1
+          fi
+          echo "检查通过"

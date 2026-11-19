@@ -30,8 +30,45 @@ WORK_DIR="${WORK_DIR:-/build}"
 OUT_DIR="${OUT_DIR:-/out}"
 ARCH="$(uname -m)"
 
-log() { printf '[build] %s\n' "$*" >&2; }
-die() { printf '[build] ERROR: %s\n' "$*" >&2; exit 1; }
+mkdir -p "$OUT_DIR"
+BUILD_LOG="$OUT_DIR/build.log"
+# 全程落盘：失败时 workflow 会把这个文件作为诊断 artifact 上传
+exec > >(tee -a "$BUILD_LOG") 2>&1
+
+log()   { printf '[build] %s\n' "$*"; }
+stage() { printf '\n[build] ========== %s ==========\n' "$*"; }
+die()   { printf '[build] ERROR: %s\n' "$*" >&2; exit 1; }
+
+on_error() {
+    local rc=$?
+    trap - ERR
+    set +e
+    printf '\n[build] ========== 构建失败 rc=%s ==========\n' "$rc"
+
+    local diag="$OUT_DIR/diagnostics"
+    mkdir -p "$diag"
+
+    local nginx_tree="$WORK_DIR/nginx-${NGINX_VERSION}"
+    if [ -f "$nginx_tree/objs/autoconf.err" ]; then
+        printf '\n--- nginx objs/autoconf.err (tail 150) ---\n'
+        tail -n 150 "$nginx_tree/objs/autoconf.err"
+        cp "$nginx_tree/objs/autoconf.err" "$diag/" 2>/dev/null
+    fi
+    local f
+    for f in "$WORK_DIR"/openssl-*/config.log "$WORK_DIR"/pcre2-*/config.log \
+             "$WORK_DIR"/zlib-*/configure.log; do
+        [ -f "$f" ] || continue
+        printf '\n--- %s (tail 100) ---\n' "$f"
+        tail -n 100 "$f"
+        cp "$f" "$diag/" 2>/dev/null
+    done
+
+    sync
+    sleep 1
+    exit "$rc"
+}
+trap on_error ERR
+
 if [ -n "${EXPECTED_ARCH:-}" ] && [ "$ARCH" != "$EXPECTED_ARCH" ]; then
     die "架构不匹配：容器为 $ARCH，期望 $EXPECTED_ARCH（产物命名与真实架构必须一致）"
 fi
@@ -46,10 +83,17 @@ if [ -f /opt/rh/devtoolset-11/enable ]; then
     export CC=gcc
 fi
 
+stage "准备工具链"
 mkdir -p "$WORK_DIR" "$OUT_DIR"
 cd "$WORK_DIR"
 
-log "解包源码"
+if [ -f /opt/rh/devtoolset-11/enable ]; then
+    printf 'devtoolset-11: 已启用\n'
+else
+    printf 'devtoolset-11: 未安装，使用系统 gcc\n'
+fi
+
+stage "解包源码"
 for tarball in \
     "nginx-${NGINX_VERSION}.tar.gz" \
     "openssl-${OPENSSL_VERSION}.tar.gz" \
@@ -59,23 +103,25 @@ for tarball in \
     tar xzf "$SRC_DIR/$tarball"
 done
 
-log "编译环境"
-gcc --version | head -n 1 >&2
-ldd --version | head -n 1 >&2
+stage "编译环境"
+# 注意：不要用 `| head`。脚本启用了 pipefail，head 提前退出会让上游进程收到
+# SIGPIPE 并以 141 退出，导致构建随机失败。
+gcc --version | sed -n '1p'
+ldd --version | sed -n '1p'
 
-log "configure"
+stage "configure"
 mapfile -t CONFIGURE_ARGS < <(nginx_configure_args "$WORK_DIR")
 cd "$WORK_DIR/nginx-${NGINX_VERSION}"
 ./configure "${CONFIGURE_ARGS[@]}"
 
-log "make -j$(nproc)"
+stage "make -j$(nproc)"
 make -j"$(nproc)"
 
 [ -x objs/nginx ] || die "编译失败：objs/nginx 不存在"
 
-log "收集构建信息"
-COMPILER="$(gcc --version | head -n 1)"
-LIBC="$(ldd --version | head -n 1)"
+stage "收集构建信息"
+COMPILER="$(gcc --version | sed -n '1p')"
+LIBC="$(ldd --version | sed -n '1p')"
 OS_PRETTY="$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || true)"
 NGINX_V="$("./objs/nginx" -V 2>&1 || true)"
 LDD_OUT="$(ldd ./objs/nginx 2>&1 || true)"
@@ -104,7 +150,7 @@ $(printf '    "%s",\n' "${CONFIGURE_ARGS[@]}" | sed '$ s/,$//')
 }
 EOF_JSON
 
-log "打包可分发产物"
+stage "打包可分发产物"
 STAGE="$OUT_DIR/stage/nginx-${NGINX_VERSION}-${DISTRO}-${ARCH}"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/bin" "$STAGE/conf"
@@ -144,6 +190,6 @@ rm -rf "$OUT_DIR/stage"
     sha256sum "$BIN_NAME" "${BIN_NAME}.tar.gz" "$BIN_NAME.build-info.json" > SHA256SUMS
 )
 
-log "产物:"
+stage "完成"
 ls -l "$OUT_DIR"
-cat "$OUT_DIR/SHA256SUMS" >&2
+cat "$OUT_DIR/SHA256SUMS"
